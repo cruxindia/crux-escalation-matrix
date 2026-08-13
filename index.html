@@ -105,6 +105,28 @@
   </div>
   <div class="g_id_signin" data-type="standard" data-theme="outline" data-size="large" data-text="signin_with"></div>
   <div id="loginError"></div>
+
+  <div id="registerForm" style="display:none; text-align:left; margin-top:20px;">
+    <div style="font-size:0.9rem; color:var(--muted); margin-bottom:14px;">
+      You're not registered yet. Fill this in and an Admin will review it.
+    </div>
+    <div class="field"><label>Full Name *</label><input id="r_name" type="text"></div>
+    <div class="field"><label>Mobile</label><input id="r_mobile" type="text"></div>
+    <div class="field"><label>Designation</label><input id="r_designation" type="text"></div>
+    <div class="field"><label>Branch / Location</label><input id="r_location" type="text"></div>
+    <div class="field"><label>Zone</label><input id="r_zone" type="text"></div>
+    <div class="field"><label>Reporting Manager Email</label><input id="r_manager" type="email"></div>
+    <div class="field"><label>Requested Role</label>
+      <select id="r_role">
+        <option value="Location Head">Location Head</option>
+        <option value="Viewer">Viewer</option>
+      </select>
+    </div>
+    <div class="formError" id="registerError"></div>
+    <button class="primary" id="submitRegister" style="width:100%;">Submit for Approval</button>
+  </div>
+
+  <div id="pendingMessage" style="display:none; margin-top:20px; padding:14px; border-radius:var(--radius); background:#fff8e6; border:1px solid #f0dca0; font-size:0.88rem; text-align:left;"></div>
 </div>
 
 <!-- ============ APP ============ -->
@@ -130,6 +152,11 @@
 
   <!-- Users (Admin only) -->
   <div id="usersView" style="display:none;">
+    <div id="pendingSection" style="display:none; margin-bottom:28px;">
+      <h2 style="font-size:1rem; color:var(--muted); text-transform:uppercase; letter-spacing:0.03em; margin-bottom:14px;">Pending Approvals</h2>
+      <div id="pendingList"></div>
+    </div>
+
     <div class="toolbar">
       <h2>Users</h2>
       <button class="primary" id="addUserBtn">+ Add User</button>
@@ -261,13 +288,27 @@ async function api(action, payload) {
 async function handleCredentialResponse(response) {
   currentToken = response.credential;
   const data = await api('whoami', {});
+
   if (!data.ok) {
+    if (data.reason === 'unregistered') {
+      document.getElementById('registerForm').style.display = 'block';
+      return;
+    }
+    if (data.reason === 'pending' || data.reason === 'rejected' || data.reason === 'inactive') {
+      const pending = document.getElementById('pendingMessage');
+      pending.style.display = 'block';
+      pending.textContent = data.error;
+      currentToken = null;
+      return;
+    }
+    // invalid_token or anything unexpected
     const err = document.getElementById('loginError');
     err.style.display = 'block';
     err.textContent = data.error;
     currentToken = null;
     return;
   }
+
   currentUser = data.user;
   document.getElementById('loginScreen').style.display = 'none';
   document.getElementById('app').style.display = 'block';
@@ -278,6 +319,34 @@ async function handleCredentialResponse(response) {
   }
   loadClients();
 }
+
+document.getElementById('submitRegister').onclick = async () => {
+  const errEl = document.getElementById('registerError');
+  errEl.style.display = 'none';
+
+  const payload = {
+    name: document.getElementById('r_name').value.trim(),
+    mobile: document.getElementById('r_mobile').value.trim(),
+    designation: document.getElementById('r_designation').value.trim(),
+    location: document.getElementById('r_location').value.trim(),
+    zone: document.getElementById('r_zone').value.trim(),
+    manager_email: document.getElementById('r_manager').value.trim(),
+    requested_role: document.getElementById('r_role').value
+  };
+
+  const data = await api('registerUser', payload);
+  if (!data.ok) {
+    errEl.textContent = data.error;
+    errEl.style.display = 'block';
+    return;
+  }
+
+  document.getElementById('registerForm').style.display = 'none';
+  const pending = document.getElementById('pendingMessage');
+  pending.style.display = 'block';
+  pending.textContent = data.message;
+  currentToken = null;
+};
 
 function showListView() {
   document.getElementById('listView').style.display = 'block';
@@ -304,13 +373,18 @@ document.getElementById('navClients').onclick = showListView;
 document.getElementById('navUsers').onclick = showUsersView;
 
 async function loadUsers() {
+  await loadPendingUsers();
+
   const listEl = document.getElementById('userList');
   listEl.innerHTML = '<div class="empty">Loading...</div>';
   const data = await api('listUsers', {});
   if (!data.ok) { listEl.innerHTML = '<div class="empty">' + data.error + '</div>'; return; }
 
+  const activeUsers = data.users.filter(u => u.status === 'Active');
+  if (activeUsers.length === 0) { listEl.innerHTML = '<div class="empty">No active users yet.</div>'; return; }
+
   listEl.innerHTML = '';
-  data.users.forEach(u => {
+  activeUsers.forEach(u => {
     const card = document.createElement('div');
     card.className = 'clientCard';
     card.style.cursor = 'default';
@@ -321,6 +395,61 @@ async function loadUsers() {
       '</div>' +
       '<span class="badge complete">' + u.role + '</span>';
     listEl.appendChild(card);
+  });
+}
+
+async function loadPendingUsers() {
+  const section = document.getElementById('pendingSection');
+  const listEl = document.getElementById('pendingList');
+  const data = await api('listPendingUsers', {});
+
+  if (!data.ok || data.pending.length === 0) {
+    section.style.display = 'none';
+    return;
+  }
+
+  section.style.display = 'block';
+  listEl.innerHTML = '';
+  data.pending.forEach(p => {
+    const card = document.createElement('div');
+    card.className = 'sectionCard';
+    card.innerHTML =
+      '<div style="font-weight:600; margin-bottom:4px;">' + p.name + ' &middot; ' + p.email + '</div>' +
+      '<div class="meta" style="color:var(--muted); font-size:0.85rem; margin-bottom:10px;">' +
+        (p.designation || '&mdash;') + (p.location ? ' &middot; ' + p.location : '') + (p.zone ? ' &middot; Zone ' + p.zone : '') +
+        (p.mobile ? ' &middot; ' + p.mobile : '') +
+        (p.manager_email ? ' &middot; reports to ' + p.manager_email : '') +
+        ' &middot; requested: ' + p.requested_role +
+      '</div>' +
+      '<div style="display:flex; gap:8px; align-items:center;">' +
+        '<select id="role_' + p.user_id + '" style="padding:7px 10px; border:1px solid var(--line); border-radius:8px; font-size:0.85rem;">' +
+          '<option value="Location Head"' + (p.requested_role === 'Location Head' ? ' selected' : '') + '>Location Head</option>' +
+          '<option value="Viewer"' + (p.requested_role === 'Viewer' ? ' selected' : '') + '>Viewer</option>' +
+          '<option value="Admin">Admin</option>' +
+        '</select>' +
+        '<button class="primary" data-approve="' + p.user_id + '" style="padding:7px 14px;">Approve</button>' +
+        '<button class="ghost" data-reject="' + p.user_id + '" style="padding:7px 14px;">Reject</button>' +
+      '</div>';
+    listEl.appendChild(card);
+  });
+
+  listEl.querySelectorAll('[data-approve]').forEach(btn => {
+    btn.onclick = async () => {
+      const userId = btn.getAttribute('data-approve');
+      const role = document.getElementById('role_' + userId).value;
+      const data = await api('approveUser', { user_id: userId, role: role });
+      if (!data.ok) { alert(data.error); return; }
+      loadUsers();
+    };
+  });
+  listEl.querySelectorAll('[data-reject]').forEach(btn => {
+    btn.onclick = async () => {
+      if (!confirm('Reject this registration?')) return;
+      const userId = btn.getAttribute('data-reject');
+      const data = await api('rejectUser', { user_id: userId });
+      if (!data.ok) { alert(data.error); return; }
+      loadUsers();
+    };
   });
 }
 
