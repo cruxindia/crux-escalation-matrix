@@ -6,65 +6,292 @@
 <title>Crux Escalation Matrix</title>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
-  body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; max-width: 480px; margin: 60px auto; padding: 0 16px; color: #1a1a1a; text-align: center; }
-  h1 { font-size: 1.4rem; margin-bottom: 4px; }
-  .sub { color: #666; font-size: 0.9rem; margin-bottom: 32px; }
-  #g_id_signin { display: inline-block; margin: 16px 0; }
-  #result { text-align: left; margin-top: 24px; padding: 16px; border-radius: 10px; background: #f7f7f7; display: none; }
-  #result.ok { background: #eafaf0; border: 1px solid #b6e6c9; }
-  #result.err { background: #fdecec; border: 1px solid #f3b8b8; }
-  .row { margin: 4px 0; font-size: 0.92rem; }
-  .row b { display: inline-block; width: 70px; }
+  :root {
+    --ink: #1a1a1a;
+    --muted: #666;
+    --line: #e4e4e4;
+    --bg: #fafafa;
+    --card: #ffffff;
+    --accent: #1f6feb;
+    --good: #1a7f37;
+    --good-bg: #eafaf0;
+    --bad: #cf222e;
+    --bad-bg: #fdecec;
+    --radius: 12px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+    margin: 0; background: var(--bg); color: var(--ink);
+  }
+
+  /* ---- Login screen ---- */
+  #loginScreen { max-width: 420px; margin: 90px auto; padding: 0 16px; text-align: center; }
+  #loginScreen h1 { font-size: 1.4rem; margin-bottom: 4px; }
+  #loginScreen .sub { color: var(--muted); font-size: 0.92rem; margin-bottom: 28px; }
+  #loginError { text-align: left; margin-top: 20px; padding: 14px; border-radius: var(--radius); background: var(--bad-bg); border: 1px solid #f3b8b8; color: var(--bad); font-size: 0.88rem; display: none; }
+
+  /* ---- App shell ---- */
+  #app { display: none; max-width: 900px; margin: 0 auto; padding: 24px 16px 80px; }
+  header.topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+  header.topbar h1 { font-size: 1.2rem; margin: 0; }
+  header.topbar .who { font-size: 0.85rem; color: var(--muted); }
+  header.topbar .who b { color: var(--ink); }
+
+  .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+  .toolbar h2 { font-size: 1rem; margin: 0; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; }
+  button.primary {
+    background: var(--accent); color: #fff; border: none; border-radius: 8px;
+    padding: 9px 16px; font-size: 0.9rem; cursor: pointer;
+  }
+  button.primary:hover { background: #185fc9; }
+  button.ghost {
+    background: none; border: 1px solid var(--line); border-radius: 8px;
+    padding: 8px 14px; font-size: 0.85rem; cursor: pointer; color: var(--ink);
+  }
+
+  /* ---- Client cards ---- */
+  .clientCard {
+    background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 16px; margin-bottom: 10px; cursor: pointer; display: flex; justify-content: space-between; align-items: center;
+  }
+  .clientCard:hover { border-color: var(--accent); }
+  .clientCard .name { font-weight: 600; font-size: 0.98rem; }
+  .clientCard .meta { color: var(--muted); font-size: 0.82rem; margin-top: 3px; }
+  .badge { padding: 3px 10px; border-radius: 999px; font-size: 0.78rem; font-weight: 600; }
+  .badge.complete { background: var(--good-bg); color: var(--good); }
+  .badge.incomplete { background: var(--bad-bg); color: var(--bad); }
+
+  /* ---- Modal ---- */
+  .overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.35); align-items: center; justify-content: center; padding: 16px; z-index: 10; }
+  .overlay.show { display: flex; }
+  .modal { background: #fff; border-radius: var(--radius); padding: 24px; width: 100%; max-width: 440px; max-height: 88vh; overflow-y: auto; }
+  .modal h3 { margin-top: 0; }
+  .field { margin-bottom: 14px; text-align: left; }
+  .field label { display: block; font-size: 0.82rem; color: var(--muted); margin-bottom: 4px; }
+  .field input, .field select, .field textarea {
+    width: 100%; padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px; font-size: 0.92rem; font-family: inherit;
+  }
+  .modalActions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; }
+  .formError { color: var(--bad); font-size: 0.85rem; margin-top: 10px; display: none; }
+
+  /* ---- Detail view ---- */
+  #detailView { display: none; }
+  .backLink { display: inline-block; margin-bottom: 16px; color: var(--accent); cursor: pointer; font-size: 0.88rem; }
+  .sectionCard { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; margin-bottom: 14px; }
+  .sectionCard h3 { margin: 0 0 12px; font-size: 0.95rem; }
+  table.branchTable { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
+  table.branchTable th { text-align: left; color: var(--muted); font-weight: 600; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+  table.branchTable td { padding: 8px; border-bottom: 1px solid #f0f0f0; }
+  .empty { color: var(--muted); font-size: 0.88rem; padding: 8px 0; }
+
+  .matrixLevels { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  @media (max-width: 560px) { .matrixLevels { grid-template-columns: 1fr; } }
+  .matrixLevel { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font-size: 0.85rem; }
+  .matrixLevel .lvl { font-weight: 600; margin-bottom: 4px; }
+  .matrixLevel .missing { color: var(--bad); }
 </style>
 </head>
 <body>
 
-<h1>Crux Escalation Matrix</h1>
-<div class="sub">Sign in with your cruxindia.co.in Google account</div>
-
-<div id="g_id_onload"
-     data-client_id="512625006659-2akqlqt7dogflaqseig316ung5ub08n6.apps.googleusercontent.com"
-     data-callback="handleCredentialResponse"
-     data-hd="cruxindia.co.in">
+<!-- ============ LOGIN ============ -->
+<div id="loginScreen">
+  <h1>Crux Escalation Matrix</h1>
+  <div class="sub">Sign in with your cruxindia.co.in Google account</div>
+  <div id="g_id_onload"
+       data-client_id="512625006659-2akqlqt7dogflaqseig316ung5ub08n6.apps.googleusercontent.com"
+       data-callback="handleCredentialResponse"
+       data-hd="cruxindia.co.in">
+  </div>
+  <div class="g_id_signin" data-type="standard" data-theme="outline" data-size="large" data-text="signin_with"></div>
+  <div id="loginError"></div>
 </div>
-<div class="g_id_signin" data-type="standard" data-theme="outline" data-size="large" data-text="signin_with"></div>
 
-<div id="result"></div>
+<!-- ============ APP ============ -->
+<div id="app">
+  <header class="topbar">
+    <h1>Crux Escalation Matrix</h1>
+    <div class="who">Signed in as <b id="whoName"></b> &middot; <span id="whoRole"></span></div>
+  </header>
+
+  <!-- Client list -->
+  <div id="listView">
+    <div class="toolbar">
+      <h2>Clients</h2>
+      <button class="primary" id="addClientBtn">+ Add Client</button>
+    </div>
+    <div id="clientList"></div>
+  </div>
+
+  <!-- Client detail -->
+  <div id="detailView">
+    <span class="backLink" id="backToList">&larr; Back to clients</span>
+
+    <div class="sectionCard">
+      <h3 id="detailName"></h3>
+      <div id="detailMeta" class="empty"></div>
+    </div>
+
+    <div class="sectionCard">
+      <h3>Branches</h3>
+      <div id="branchTableWrap"></div>
+    </div>
+
+    <div class="sectionCard">
+      <h3>Escalation Matrix <span id="matrixBadge"></span></h3>
+      <div id="matrixLevels" class="matrixLevels"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ ADD CLIENT MODAL ============ -->
+<div class="overlay" id="addClientOverlay">
+  <div class="modal">
+    <h3>Add Client</h3>
+    <div class="field"><label>Client Name *</label><input id="f_name" type="text"></div>
+    <div class="field"><label>Client Email *</label><input id="f_email" type="email"></div>
+    <div class="field"><label>Client Email CC</label><input id="f_cc" type="text"></div>
+    <div class="field"><label>Client Code</label><input id="f_code" type="text"></div>
+    <div class="field"><label>Notes</label><textarea id="f_notes" rows="2"></textarea></div>
+    <div class="formError" id="addClientError"></div>
+    <div class="modalActions">
+      <button class="ghost" id="cancelAddClient">Cancel</button>
+      <button class="primary" id="saveAddClient">Save</button>
+    </div>
+  </div>
+</div>
 
 <script>
-// Update this after each deployment/redeploy of the Apps Script.
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbw1acTN1svZ9_i9zBiS_tzn3x8kH7Qs19KeqgSml5MJahT3yQQclmbNVmWxAhULHqOfEw/exec';
 
-async function handleCredentialResponse(response) {
-  const out = document.getElementById('result');
-  out.style.display = 'block';
-  out.className = '';
-  out.innerHTML = 'Verifying with server...';
+let currentToken = null;
+let currentUser = null;
 
-  try {
-    const res = await fetch(APPS_SCRIPT_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ action: 'whoami', token: response.credential })
-    });
-    const data = await res.json();
-
-    if (data.ok) {
-      out.className = 'ok';
-      out.innerHTML =
-        '<div class="row"><b>Status</b> Signed in</div>' +
-        '<div class="row"><b>Name</b> ' + data.user.name + '</div>' +
-        '<div class="row"><b>Email</b> ' + data.user.email + '</div>' +
-        '<div class="row"><b>Role</b> ' + data.user.role + '</div>';
-    } else {
-      out.className = 'err';
-      out.innerHTML = '<div class="row"><b>Status</b> Rejected</div><div class="row"><b>Reason</b> ' + data.error + '</div>';
-    }
-  } catch (err) {
-    out.className = 'err';
-    out.innerHTML = '<div class="row"><b>Status</b> Network error</div><div class="row"><b>Detail</b> ' + err.message + '</div>';
-  }
+async function api(action, payload) {
+  const res = await fetch(APPS_SCRIPT_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ action, token: currentToken, payload: payload || {} })
+  });
+  return res.json();
 }
+
+async function handleCredentialResponse(response) {
+  currentToken = response.credential;
+  const data = await api('whoami', {});
+  if (!data.ok) {
+    const err = document.getElementById('loginError');
+    err.style.display = 'block';
+    err.textContent = data.error;
+    currentToken = null;
+    return;
+  }
+  currentUser = data.user;
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  document.getElementById('whoName').textContent = currentUser.name;
+  document.getElementById('whoRole').textContent = currentUser.role;
+  loadClients();
+}
+
+async function loadClients() {
+  const listEl = document.getElementById('clientList');
+  listEl.innerHTML = '<div class="empty">Loading...</div>';
+  const data = await api('listClients', {});
+  if (!data.ok) { listEl.innerHTML = '<div class="empty">' + data.error + '</div>'; return; }
+  if (data.clients.length === 0) { listEl.innerHTML = '<div class="empty">No clients yet. Add your first client.</div>'; return; }
+
+  listEl.innerHTML = '';
+  data.clients.forEach(c => {
+    const card = document.createElement('div');
+    card.className = 'clientCard';
+    card.innerHTML =
+      '<div>' +
+        '<div class="name">' + c.name + '</div>' +
+        '<div class="meta">' + c.branch_count + ' branch' + (c.branch_count === 1 ? '' : 'es') +
+        (c.updated_at ? ' &middot; updated ' + new Date(c.updated_at).toLocaleDateString() : '') + '</div>' +
+      '</div>' +
+      '<span class="badge ' + (c.matrix_complete ? 'complete' : 'incomplete') + '">' +
+        (c.matrix_complete ? 'Complete' : 'Incomplete') + '</span>';
+    card.onclick = () => openClient(c.client_id);
+    listEl.appendChild(card);
+  });
+}
+
+async function openClient(clientId) {
+  const data = await api('getClient', { client_id: clientId });
+  if (!data.ok) { alert(data.error); return; }
+
+  document.getElementById('listView').style.display = 'none';
+  document.getElementById('detailView').style.display = 'block';
+
+  document.getElementById('detailName').textContent = data.client.name;
+  document.getElementById('detailMeta').textContent =
+    data.client.client_email + (data.client.client_code ? ' \u00b7 ' + data.client.client_code : '');
+
+  const branchWrap = document.getElementById('branchTableWrap');
+  if (data.branches.length === 0) {
+    branchWrap.innerHTML = '<div class="empty">No branches added yet.</div>';
+  } else {
+    let rows = data.branches.map(b =>
+      '<tr><td>' + b.name + '</td><td>' + (b.code || '') + '</td><td>' + (b.crux_poc_name || '') + '</td><td>' + (b.status || '') + '</td></tr>'
+    ).join('');
+    branchWrap.innerHTML =
+      '<table class="branchTable"><thead><tr><th>Branch</th><th>Code</th><th>Crux POC</th><th>Status</th></tr></thead><tbody>' + rows + '</tbody></table>';
+  }
+
+  const badge = document.getElementById('matrixBadge');
+  badge.className = 'badge ' + (data.matrix_complete ? 'complete' : 'incomplete');
+  badge.textContent = data.matrix_complete ? 'Complete' : 'Incomplete';
+
+  const levels = [
+    ['SPOC', 'spoc'], ['Team Leader', 'team_leader'], ['Branch Manager', 'branch_manager'],
+    ['Zonal Manager', 'zonal_manager'], ['Head Office', 'head_office']
+  ];
+  const m = data.matrix || {};
+  document.getElementById('matrixLevels').innerHTML = levels.map(([label, key]) => {
+    const name = m[key + '_name'], mobile = m[key + '_mobile'], email = m[key + '_email'];
+    const filled = name && mobile && email;
+    return '<div class="matrixLevel"><div class="lvl">' + label + '</div>' +
+      (filled ? (name + '<br>' + mobile + '<br>' + email) : '<span class="missing">Not filled</span>') +
+      '</div>';
+  }).join('');
+}
+
+document.getElementById('backToList').onclick = () => {
+  document.getElementById('detailView').style.display = 'none';
+  document.getElementById('listView').style.display = 'block';
+};
+
+document.getElementById('addClientBtn').onclick = () => {
+  document.getElementById('addClientOverlay').classList.add('show');
+};
+document.getElementById('cancelAddClient').onclick = () => {
+  document.getElementById('addClientOverlay').classList.remove('show');
+};
+document.getElementById('saveAddClient').onclick = async () => {
+  const errEl = document.getElementById('addClientError');
+  errEl.style.display = 'none';
+
+  const payload = {
+    name: document.getElementById('f_name').value.trim(),
+    client_email: document.getElementById('f_email').value.trim(),
+    client_cc: document.getElementById('f_cc').value.trim(),
+    client_code: document.getElementById('f_code').value.trim(),
+    notes: document.getElementById('f_notes').value.trim()
+  };
+
+  const data = await api('createClient', payload);
+  if (!data.ok) {
+    errEl.textContent = data.error;
+    errEl.style.display = 'block';
+    return;
+  }
+
+  document.getElementById('addClientOverlay').classList.remove('show');
+  ['f_name','f_email','f_cc','f_code','f_notes'].forEach(id => document.getElementById(id).value = '');
+  loadClients();
+};
 </script>
 
 </body>
