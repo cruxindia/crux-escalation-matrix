@@ -114,6 +114,11 @@
     <div class="who">Signed in as <b id="whoName"></b> &middot; <span id="whoRole"></span></div>
   </header>
 
+  <div id="navTabs" style="display:flex; gap:8px; margin-bottom:20px;">
+    <button class="ghost" id="navClients" style="border-color:var(--accent); color:var(--accent);">Clients</button>
+    <button class="ghost" id="navUsers" style="display:none;">Users</button>
+  </div>
+
   <!-- Client list -->
   <div id="listView">
     <div class="toolbar">
@@ -121,6 +126,15 @@
       <button class="primary" id="addClientBtn">+ Add Client</button>
     </div>
     <div id="clientList"></div>
+  </div>
+
+  <!-- Users (Admin only) -->
+  <div id="usersView" style="display:none;">
+    <div class="toolbar">
+      <h2>Users</h2>
+      <button class="primary" id="addUserBtn">+ Add User</button>
+    </div>
+    <div id="userList"></div>
   </div>
 
   <!-- Client detail -->
@@ -133,12 +147,18 @@
     </div>
 
     <div class="sectionCard">
-      <h3>Branches</h3>
+      <div class="toolbar" style="margin-bottom:12px;">
+        <h3 style="margin:0;">Branches</h3>
+        <button class="ghost" id="addBranchBtn">+ Add Branch</button>
+      </div>
       <div id="branchTableWrap"></div>
     </div>
 
     <div class="sectionCard">
-      <h3>Escalation Matrix <span id="matrixBadge"></span></h3>
+      <div class="toolbar" style="margin-bottom:12px;">
+        <h3 style="margin:0;">Escalation Matrix <span id="matrixBadge"></span></h3>
+        <button class="ghost" id="editMatrixBtn">Edit Matrix</button>
+      </div>
       <div id="matrixLevels" class="matrixLevels"></div>
     </div>
   </div>
@@ -161,11 +181,73 @@
   </div>
 </div>
 
+<!-- ============ ADD BRANCH MODAL ============ -->
+<div class="overlay" id="addBranchOverlay">
+  <div class="modal">
+    <h3>Add Branch</h3>
+    <div class="field"><label>Branch Name *</label><input id="b_name" type="text"></div>
+    <div class="field"><label>Branch Code</label><input id="b_code" type="text"></div>
+    <div class="field"><label>Location</label><input id="b_location" type="text"></div>
+    <div class="field"><label>Zone</label><input id="b_zone" type="text"></div>
+    <div class="field"><label>Crux POC Name</label><input id="b_poc_name" type="text"></div>
+    <div class="field"><label>Crux POC Mobile</label><input id="b_poc_mobile" type="text"></div>
+    <div class="field"><label>Crux POC Email</label><input id="b_poc_email" type="email"></div>
+    <div class="field"><label>Branch Manager Name</label><input id="b_bm_name" type="text"></div>
+    <div class="field"><label>Branch Manager Mobile</label><input id="b_bm_mobile" type="text"></div>
+    <div class="field"><label>Branch Manager Email</label><input id="b_bm_email" type="email"></div>
+    <div class="formError" id="addBranchError"></div>
+    <div class="modalActions">
+      <button class="ghost" id="cancelAddBranch">Cancel</button>
+      <button class="primary" id="saveAddBranch">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ EDIT MATRIX MODAL ============ -->
+<div class="overlay" id="editMatrixOverlay">
+  <div class="modal" style="max-width:520px;">
+    <h3>Escalation Matrix</h3>
+    <div id="matrixFormLevels"></div>
+    <div class="formError" id="matrixError"></div>
+    <div class="modalActions">
+      <button class="ghost" id="cancelMatrix">Cancel</button>
+      <button class="primary" id="saveMatrix">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ ADD USER MODAL ============ -->
+<div class="overlay" id="addUserOverlay">
+  <div class="modal">
+    <h3>Add User</h3>
+    <div class="field"><label>Email * (must be @cruxindia.co.in)</label><input id="u_email" type="email"></div>
+    <div class="field"><label>Name *</label><input id="u_name" type="text"></div>
+    <div class="field"><label>Role *</label>
+      <select id="u_role">
+        <option value="Location Head">Location Head</option>
+        <option value="Admin">Admin</option>
+        <option value="Viewer">Viewer</option>
+      </select>
+    </div>
+    <div class="formError" id="addUserError"></div>
+    <div class="modalActions">
+      <button class="ghost" id="cancelAddUser">Cancel</button>
+      <button class="primary" id="saveAddUser">Save</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbw1acTN1svZ9_i9zBiS_tzn3x8kH7Qs19KeqgSml5MJahT3yQQclmbNVmWxAhULHqOfEw/exec';
 
 let currentToken = null;
 let currentUser = null;
+let currentClientId = null;
+
+const MATRIX_LEVELS = [
+  ['SPOC', 'spoc'], ['Team Leader', 'team_leader'], ['Branch Manager', 'branch_manager'],
+  ['Zonal Manager', 'zonal_manager'], ['Head Office', 'head_office']
+];
 
 async function api(action, payload) {
   const res = await fetch(APPS_SCRIPT_URL, {
@@ -191,8 +273,84 @@ async function handleCredentialResponse(response) {
   document.getElementById('app').style.display = 'block';
   document.getElementById('whoName').textContent = currentUser.name;
   document.getElementById('whoRole').textContent = currentUser.role;
+  if (currentUser.role === 'Admin') {
+    document.getElementById('navUsers').style.display = 'inline-block';
+  }
   loadClients();
 }
+
+function showListView() {
+  document.getElementById('listView').style.display = 'block';
+  document.getElementById('usersView').style.display = 'none';
+  document.getElementById('detailView').style.display = 'none';
+  document.getElementById('navClients').style.borderColor = 'var(--accent)';
+  document.getElementById('navClients').style.color = 'var(--accent)';
+  document.getElementById('navUsers').style.borderColor = 'var(--line)';
+  document.getElementById('navUsers').style.color = 'var(--ink)';
+}
+
+function showUsersView() {
+  document.getElementById('listView').style.display = 'none';
+  document.getElementById('usersView').style.display = 'block';
+  document.getElementById('detailView').style.display = 'none';
+  document.getElementById('navUsers').style.borderColor = 'var(--accent)';
+  document.getElementById('navUsers').style.color = 'var(--accent)';
+  document.getElementById('navClients').style.borderColor = 'var(--line)';
+  document.getElementById('navClients').style.color = 'var(--ink)';
+  loadUsers();
+}
+
+document.getElementById('navClients').onclick = showListView;
+document.getElementById('navUsers').onclick = showUsersView;
+
+async function loadUsers() {
+  const listEl = document.getElementById('userList');
+  listEl.innerHTML = '<div class="empty">Loading...</div>';
+  const data = await api('listUsers', {});
+  if (!data.ok) { listEl.innerHTML = '<div class="empty">' + data.error + '</div>'; return; }
+
+  listEl.innerHTML = '';
+  data.users.forEach(u => {
+    const card = document.createElement('div');
+    card.className = 'clientCard';
+    card.style.cursor = 'default';
+    card.innerHTML =
+      '<div>' +
+        '<div class="name">' + u.name + '</div>' +
+        '<div class="meta">' + u.email + '</div>' +
+      '</div>' +
+      '<span class="badge complete">' + u.role + '</span>';
+    listEl.appendChild(card);
+  });
+}
+
+document.getElementById('addUserBtn').onclick = () => {
+  document.getElementById('addUserOverlay').classList.add('show');
+};
+document.getElementById('cancelAddUser').onclick = () => {
+  document.getElementById('addUserOverlay').classList.remove('show');
+};
+document.getElementById('saveAddUser').onclick = async () => {
+  const errEl = document.getElementById('addUserError');
+  errEl.style.display = 'none';
+
+  const payload = {
+    email: document.getElementById('u_email').value.trim(),
+    name: document.getElementById('u_name').value.trim(),
+    role: document.getElementById('u_role').value
+  };
+
+  const data = await api('createUser', payload);
+  if (!data.ok) {
+    errEl.textContent = data.error;
+    errEl.style.display = 'block';
+    return;
+  }
+
+  document.getElementById('addUserOverlay').classList.remove('show');
+  ['u_email','u_name'].forEach(id => document.getElementById(id).value = '');
+  loadUsers();
+};
 
 async function loadClients() {
   const listEl = document.getElementById('clientList');
@@ -221,6 +379,9 @@ async function loadClients() {
 async function openClient(clientId) {
   const data = await api('getClient', { client_id: clientId });
   if (!data.ok) { alert(data.error); return; }
+
+  currentClientId = clientId;
+  window.lastClientData = data;
 
   document.getElementById('listView').style.display = 'none';
   document.getElementById('detailView').style.display = 'block';
@@ -259,8 +420,7 @@ async function openClient(clientId) {
 }
 
 document.getElementById('backToList').onclick = () => {
-  document.getElementById('detailView').style.display = 'none';
-  document.getElementById('listView').style.display = 'block';
+  showListView();
 };
 
 document.getElementById('addClientBtn').onclick = () => {
@@ -291,6 +451,86 @@ document.getElementById('saveAddClient').onclick = async () => {
   document.getElementById('addClientOverlay').classList.remove('show');
   ['f_name','f_email','f_cc','f_code','f_notes'].forEach(id => document.getElementById(id).value = '');
   loadClients();
+};
+
+/* ---- Add Branch ---- */
+document.getElementById('addBranchBtn').onclick = () => {
+  document.getElementById('addBranchOverlay').classList.add('show');
+};
+document.getElementById('cancelAddBranch').onclick = () => {
+  document.getElementById('addBranchOverlay').classList.remove('show');
+};
+document.getElementById('saveAddBranch').onclick = async () => {
+  const errEl = document.getElementById('addBranchError');
+  errEl.style.display = 'none';
+
+  const payload = {
+    client_id: currentClientId,
+    name: document.getElementById('b_name').value.trim(),
+    code: document.getElementById('b_code').value.trim(),
+    location: document.getElementById('b_location').value.trim(),
+    zone: document.getElementById('b_zone').value.trim(),
+    crux_poc_name: document.getElementById('b_poc_name').value.trim(),
+    crux_poc_mobile: document.getElementById('b_poc_mobile').value.trim(),
+    crux_poc_email: document.getElementById('b_poc_email').value.trim(),
+    branch_manager_name: document.getElementById('b_bm_name').value.trim(),
+    branch_manager_mobile: document.getElementById('b_bm_mobile').value.trim(),
+    branch_manager_email: document.getElementById('b_bm_email').value.trim()
+  };
+
+  const data = await api('createBranch', payload);
+  if (!data.ok) {
+    errEl.textContent = data.error;
+    errEl.style.display = 'block';
+    return;
+  }
+
+  document.getElementById('addBranchOverlay').classList.remove('show');
+  ['b_name','b_code','b_location','b_zone','b_poc_name','b_poc_mobile','b_poc_email','b_bm_name','b_bm_mobile','b_bm_email']
+    .forEach(id => document.getElementById(id).value = '');
+  openClient(currentClientId);
+};
+
+/* ---- Edit Matrix ---- */
+function renderMatrixForm() {
+  const m = (window.lastClientData && window.lastClientData.matrix) || {};
+  document.getElementById('matrixFormLevels').innerHTML = MATRIX_LEVELS.map(([label, key]) => {
+    return '<div class="field" style="border:1px solid var(--line); border-radius:8px; padding:10px; margin-bottom:10px;">' +
+      '<label style="font-weight:600; color:var(--ink); margin-bottom:8px;">' + label + '</label>' +
+      '<input id="m_' + key + '_name" placeholder="Name" value="' + (m[key + '_name'] || '') + '" style="margin-bottom:6px;">' +
+      '<input id="m_' + key + '_mobile" placeholder="Mobile" value="' + (m[key + '_mobile'] || '') + '" style="margin-bottom:6px;">' +
+      '<input id="m_' + key + '_email" placeholder="Email" value="' + (m[key + '_email'] || '') + '">' +
+      '</div>';
+  }).join('');
+}
+
+document.getElementById('editMatrixBtn').onclick = () => {
+  renderMatrixForm();
+  document.getElementById('editMatrixOverlay').classList.add('show');
+};
+document.getElementById('cancelMatrix').onclick = () => {
+  document.getElementById('editMatrixOverlay').classList.remove('show');
+};
+document.getElementById('saveMatrix').onclick = async () => {
+  const errEl = document.getElementById('matrixError');
+  errEl.style.display = 'none';
+
+  const payload = { client_id: currentClientId };
+  MATRIX_LEVELS.forEach(([label, key]) => {
+    payload[key + '_name'] = document.getElementById('m_' + key + '_name').value.trim();
+    payload[key + '_mobile'] = document.getElementById('m_' + key + '_mobile').value.trim();
+    payload[key + '_email'] = document.getElementById('m_' + key + '_email').value.trim();
+  });
+
+  const data = await api('upsertMatrix', payload);
+  if (!data.ok) {
+    errEl.textContent = data.error;
+    errEl.style.display = 'block';
+    return;
+  }
+
+  document.getElementById('editMatrixOverlay').classList.remove('show');
+  openClient(currentClientId);
 };
 </script>
 
